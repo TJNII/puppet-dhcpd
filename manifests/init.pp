@@ -6,6 +6,7 @@ class dhcpd (
   $default_lease_time   = 259200,
   $fallback_nameservers = undef,
   $fallback_ntpservers  = undef,
+  $manage_firewall      = true,
 ) {
   package { 'dhcp':
     ensure => installed,
@@ -26,6 +27,17 @@ class dhcpd (
   service { 'dhcpd6':
     ensure    => stopped,
     enable    => false,
-    subscribe => File['/etc/dhcp/dhcpd6.conf'],
+#    subscribe => File['/etc/dhcp/dhcpd6.conf'],
+  }
+
+  if $manage_firewall == true {
+    include firewall-config::base
+    
+    firewall { '101 allow dhcpd':
+      dport => [ 67, 68 ],
+      sport => [ 67, 68 ],
+      proto => 'udp',
+      action => accept,
+    }
   }
 }
