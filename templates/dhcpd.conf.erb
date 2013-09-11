@@ -1,0 +1,89 @@
+#
+# PUPPET MANAGED FILE: DO NOT EDIT
+#
+
+authoritative;
+
+<%
+require 'ipaddr'
+
+# The ipaddr class can convert strings to ints, but AFAICT cannot convert ints to strings.
+def ip_i_to_s(ip_i)
+  # I found this clever bit of code at http://basic70tech.wordpress.com/2007/04/13/32-bit-ip-address-to-dotted-notation-in-ruby/
+  return [24, 16, 8, 0].collect {|b| (ip_i >> b) & 255}.join('.')
+end
+
+# Get all scoped (namely facter) variables as a hash
+# (Memory consumption? Feh.)
+variables = scope.to_hash
+
+dhcp_iface_list.split(",").each do |m|
+  # Initialize failure flags
+  block_in_error   = false
+  block_last_error = ""
+
+  # Get the network details
+  network = variables["network_#{m}"]
+  netmask = variables["netmask_#{m}"]
+  network_i = IPAddr.new(network).to_i
+  netmask_i = IPAddr.new(netmask).to_i
+  
+  # Verify network contains only mask bits
+  if ( network_i != ( network_i & netmask_i ) )
+    block_in_error   = true
+    block_last_error = "Facter network value contains non-subnet bits"
+  else
+    # This is the only check nested as it is is a major failure.
+    # (Ideally this should be changed to an assert())
+    
+    # Generate range values
+    range_start_i = network_i + IPAddr.new(dynamic_range[0]).to_i
+    if ( ( range_start_i & netmask_i ) != network_i )
+      block_in_error   = true
+      block_last_error = "Network + Range start is oustide of subnet"
+    end
+
+    range_end_i = network_i + IPAddr.new(dynamic_range[1]).to_i
+    if ( ( range_end_i & netmask_i ) != network_i )
+      block_in_error   = true
+      block_last_error = "Network + Range end is oustide of subnet"
+    end
+    
+    router_i = network_i + IPAddr.new(router_offset).to_i
+    if ( ( router_i & netmask_i ) != network_i )
+      block_in_error   = true
+      block_last_error = "Network + Router is oustide of subnet"
+    end
+  end
+  ### TODO: Move autoresolv helpers to a common location and share logic
+  ### NOTE: Currently only using fallback IPs
+  nameservers = fallback_nameservers
+  ntpservers  = fallback_ntpservers
+
+  # END SETTING GENERATION
+  # ------
+  # BEGIN CONFIG BLOCK GENERATION
+  if block_in_error == true
+%>
+#
+# OMITTING <%= network %> netmask <%= netmask %> BLOCK DUE TO ERROR
+# Last error: <%= block_last_error %>
+#
+<%
+  else
+-%>
+subnet <%= network %> netmask <%= netmask %> {
+   range <%= ip_i_to_s(range_start_i) %> <%= ip_i_to_s(range_end_i) %>;
+   default-lease-time <%= default_lease_time %>;
+   max-lease-time <%= (default_lease_time.to_i * 2) %>;
+   option subnet-mask <%= netmask %>;
+   option broadcast-address <%= ip_i_to_s(network_i + ( netmask_i ^ 0xffffffff )) %>;
+   option routers <%= ip_i_to_s(router_i) %>;
+   option domain-name-servers <%= nameservers.sort.join(',') %>;
+   option ntp-servers <%= ntpservers.sort.join(',') %>;
+}
+
+<%
+  end
+end
+%>
