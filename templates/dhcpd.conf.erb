@@ -81,6 +81,21 @@ subnet <%= network %> netmask <%= netmask %> {
    option routers <%= ip_i_to_s(router_i) %>;
    option domain-name-servers <%= nameservers.sort.join(',') %>;
    option ntp-servers <%= ntpservers.sort.join(',') %>;
+<%
+# Add static declarations, if present
+# Determine if we have a host block for this subnet
+      if host_declarations.has_key?(network)
+%>
+   # Static host declarations
+<%       host_declarations[network].keys.sort.each do |host| -%>
+   host <%= host %> {
+<%          host_declarations[network][host].keys.sort.each do |host_option| -%>
+      <%= host_option %> <%= host_declarations[network][host][host_option] %>;
+<%          end -%>
+   }
+
+<%       end 
+      end -%>
 }
 
 <%

@@ -7,6 +7,7 @@ class dhcpd (
   $fallback_nameservers = undef,
   $fallback_ntpservers  = undef,
   $manage_firewall      = true,
+  $host_declarations    = undef,
 ) {
   package { 'dhcp':
     ensure => installed,
